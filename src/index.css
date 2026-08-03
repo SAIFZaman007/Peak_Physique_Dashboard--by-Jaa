@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-ink-950 text-white font-sans antialiased;
+    overflow-x: hidden;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-ink-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gold rounded-sm;
+  }
+  ::selection {
+    @apply bg-gold text-ink-950;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-gold text-ink-950 font-bold uppercase
+      tracking-[2px] text-sm px-8 py-4 rounded-sm transition-all duration-200
+      hover:bg-gold-light hover:-translate-y-0.5 hover:shadow-gold disabled:opacity-60
+      disabled:pointer-events-none;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 border border-white/30 text-white
+      font-semibold uppercase tracking-[2px] text-sm px-8 py-4 rounded-sm transition-all
+      duration-200 hover:border-gold hover:text-gold;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 text-white/70 hover:text-gold
+      font-medium uppercase tracking-wide text-xs transition-colors;
+  }
+  .eyebrow {
+    @apply text-[11px] font-bold tracking-[4px] uppercase text-gold mb-3;
+  }
+  .card {
+    @apply bg-ink-900 border border-ink-700 rounded-sm p-6 transition-colors;
+  }
+  .field-label {
+    @apply block text-[11px] font-semibold tracking-[1.5px] uppercase text-white/40 mb-2;
+  }
+  .field-input {
+    @apply w-full bg-ink-950 border border-ink-700 rounded-sm px-4 py-3 text-white text-sm
+      placeholder-white/30 outline-none transition-colors focus:border-gold;
+  }
+  .gold-grid {
+    background-image: linear-gradient(rgba(245, 166, 35, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245, 166, 35, 0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+}
+
+@layer utilities {
+  .h-display {
+    @apply font-display tracking-[3px] leading-none;
+  }
+}
