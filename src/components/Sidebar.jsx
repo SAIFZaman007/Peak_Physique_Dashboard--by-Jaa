@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, CalendarDays, CreditCard, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, CalendarDays, CreditCard, FileText, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const NAV = [
@@ -7,6 +7,7 @@ const NAV = [
   { to: "/clients", icon: Users, label: "Clients" },
   { to: "/bookings", icon: CalendarDays, label: "Bookings" },
   { to: "/payments", icon: CreditCard, label: "Payments" },
+  { to: "/content", icon: FileText, label: "Site Content" },
 ];
 
 export default function Sidebar({ onNavigate }) {

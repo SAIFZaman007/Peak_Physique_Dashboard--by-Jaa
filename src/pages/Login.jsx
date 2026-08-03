@@ -59,7 +59,7 @@ export default function Login() {
           </form>
         </div>
         <p className="mt-4 text-center text-xs text-white/30">
-          Seeded from FIRST_TRAINER_EMAIL / FIRST_TRAINER_PASSWORD in your backend .env
+          Login to manage bookings, clients, payments, and site content. Only authorized coaches and admins may access this console.
         </p>
       </div>
     </div>
