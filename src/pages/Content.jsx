@@ -5,6 +5,7 @@ import ImageUploader from "../components/ImageUploader.jsx";
 
 const TABS = [
   { key: "services", label: "Services" },
+  { key: "plans", label: "Pricing Plans" },
   { key: "testimonials", label: "Testimonials" },
   { key: "copy", label: "Page Sections" },
 ];
@@ -35,6 +36,7 @@ export default function Content() {
       </div>
 
       {tab === "services" && <ServicesPanel />}
+      {tab === "plans" && <PlansPanel />}
       {tab === "testimonials" && <TestimonialsPanel />}
       {tab === "copy" && <SectionsPanel />}
     </div>
@@ -60,8 +62,8 @@ function SavedBanner({ show }) {
 // ── Services ───────────────────────────────────────────────────────────
 
 const EMPTY_SERVICE = {
-  icon: "Dumbbell", name: "", price_label: "", price_suffix: "starting",
-  description: "", image_url: "", is_featured: false, is_active: true, sort_order: 0,
+  icon: "Dumbbell", name: "", price_label: "", price_suffix: "starting", price_cents: 0,
+  description: "", image_url: "", is_featured: false, is_active: true, is_purchasable: true, sort_order: 0,
 };
 
 function ServicesPanel() {
@@ -119,7 +121,7 @@ function ServicesPanel() {
                 onChange={(e) => setEditing({ ...editing, icon: e.target.value })} />
             </div>
             <div>
-              <label className="field-label">Price label</label>
+              <label className="field-label">Price label (display text)</label>
               <input className="field-input" placeholder="$149" value={editing.price_label}
                 onChange={(e) => setEditing({ ...editing, price_label: e.target.value })} />
             </div>
@@ -127,6 +129,25 @@ function ServicesPanel() {
               <label className="field-label">Price suffix</label>
               <input className="field-input" placeholder="starting / session / month" value={editing.price_suffix}
                 onChange={(e) => setEditing({ ...editing, price_suffix: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Charge amount (USD)</label>
+              <input
+                type="number" min={0} step="0.01" className="field-input"
+                placeholder="149.00"
+                value={editing.price_cents ? (editing.price_cents / 100).toFixed(2) : ""}
+                onChange={(e) => setEditing({ ...editing, price_cents: Math.round(Number(e.target.value || 0) * 100) })}
+              />
+              <p className="mt-1.5 text-[11px] text-white/35">
+                This is what Stripe actually charges — the label above is just display text.
+              </p>
+            </div>
+            <div className="flex items-end pb-2">
+              <label className="flex items-center gap-2 text-sm text-white/70">
+                <input type="checkbox" checked={editing.is_purchasable}
+                  onChange={(e) => setEditing({ ...editing, is_purchasable: e.target.checked })} />
+                Purchasable (show Buy Now / Add to Cart on the site)
+              </label>
             </div>
             <div className="sm:col-span-2">
               <label className="field-label">Description</label>
@@ -191,16 +212,195 @@ function ServicesPanel() {
                     )}
                   </td>
                   <td className="px-6 py-3 font-medium">{s.name}{s.is_featured && <span className="ml-2 rounded-sm bg-gold/15 px-2 py-0.5 text-[10px] text-gold">FEATURED</span>}</td>
-                  <td className="px-6 py-3 text-white/60">{s.price_label} / {s.price_suffix}</td>
+                  <td className="px-6 py-3 text-white/60">
+                    {s.price_label} / {s.price_suffix}
+                    {s.price_cents > 0 && <span className="ml-1.5 text-white/30">(charges ${(s.price_cents / 100).toFixed(2)})</span>}
+                  </td>
                   <td className="px-6 py-3">
-                    <span className={`rounded-sm border px-2 py-0.5 text-xs ${s.is_active ? "border-emerald-500/30 text-emerald-400" : "border-white/20 text-white/40"}`}>
-                      {s.is_active ? "Live" : "Hidden"}
-                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className={`rounded-sm border px-2 py-0.5 text-xs ${s.is_active ? "border-emerald-500/30 text-emerald-400" : "border-white/20 text-white/40"}`}>
+                        {s.is_active ? "Live" : "Hidden"}
+                      </span>
+                      {s.is_purchasable && s.price_cents > 0 && (
+                        <span className="rounded-sm border border-sky-500/30 px-2 py-0.5 text-xs text-sky-400">Purchasable</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-3">
                     <div className="flex justify-end gap-3">
                       <button onClick={() => setEditing(s)} className="text-white/50 hover:text-gold"><Pencil size={16} /></button>
                       <button onClick={() => remove(s.id)} className="text-white/50 hover:text-danger"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Pricing plans ──────────────────────────────────────────────────────
+// The backend has always had full CRUD at /admin/plans — this panel was
+// the missing piece; before this, plans could only be edited by hand in
+// the database.
+
+const EMPTY_PLAN = {
+  slug: "", name: "", tagline: "", price_cents: 0, interval: "month",
+  features: [], is_featured: false, is_active: true, sort_order: 0,
+};
+
+function slugify(s) {
+  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function PlansPanel() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = () =>
+    api.get("/admin/plans").then(({ data }) => setItems(data)).finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setError("");
+    try {
+      const payload = { ...editing, slug: editing.slug || slugify(editing.name) };
+      if (editing.id) {
+        await api.patch(`/admin/plans/${editing.id}`, payload);
+      } else {
+        await api.post("/admin/plans", payload);
+      }
+      setEditing(null);
+      load();
+    } catch (e) {
+      setError(apiError(e));
+    }
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Delete this plan? This can't be undone.")) return;
+    await api.delete(`/admin/plans/${id}`);
+    load();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => setEditing({ ...EMPTY_PLAN })} className="btn-primary !px-5 !py-2.5 !text-xs">
+          <Plus size={16} /> Add Plan
+        </button>
+      </div>
+
+      {editing && (
+        <div className="card space-y-4">
+          <ErrorBanner message={error} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label">Name</label>
+              <input className="field-input" value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Slug (used in checkout URLs)</label>
+              <input className="field-input" placeholder="auto-generated from name if left blank"
+                value={editing.slug}
+                onChange={(e) => setEditing({ ...editing, slug: slugify(e.target.value) })} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="field-label">Tagline</label>
+              <input className="field-input" placeholder="Our most popular plan" value={editing.tagline || ""}
+                onChange={(e) => setEditing({ ...editing, tagline: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Price (USD)</label>
+              <input
+                type="number" min={0} step="0.01" className="field-input" placeholder="149.00"
+                value={editing.price_cents ? (editing.price_cents / 100).toFixed(2) : ""}
+                onChange={(e) => setEditing({ ...editing, price_cents: Math.round(Number(e.target.value || 0) * 100) })}
+              />
+            </div>
+            <div>
+              <label className="field-label">Billing</label>
+              <select className="field-input" value={editing.interval}
+                onChange={(e) => setEditing({ ...editing, interval: e.target.value })}>
+                <option value="month">Monthly</option>
+                <option value="one_time">One-time</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <TagsEditor
+                label="Features (shown as a checklist on the pricing card)"
+                tags={editing.features || []}
+                allowDuplicates
+                onChange={(features) => setEditing({ ...editing, features })}
+              />
+            </div>
+            <div>
+              <label className="field-label">Sort order</label>
+              <input type="number" className="field-input" value={editing.sort_order}
+                onChange={(e) => setEditing({ ...editing, sort_order: Number(e.target.value) })} />
+            </div>
+            <div className="flex items-end gap-6 pb-2">
+              <label className="flex items-center gap-2 text-sm text-white/70">
+                <input type="checkbox" checked={editing.is_featured}
+                  onChange={(e) => setEditing({ ...editing, is_featured: e.target.checked })} />
+                Featured ("Most Popular" badge)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-white/70">
+                <input type="checkbox" checked={editing.is_active}
+                  onChange={(e) => setEditing({ ...editing, is_active: e.target.checked })} />
+                Active (visible on site)
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={save} className="btn-primary !px-6 !py-2.5 !text-xs">Save</button>
+            <button onClick={() => setEditing(null)} className="btn-outline !px-6 !py-2.5 !text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card !p-0 overflow-hidden">
+        {loading ? (
+          <div className="p-6 text-sm text-white/40">Loading…</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wider text-white/40">
+                <th className="px-6 py-3 font-medium">Plan</th>
+                <th className="px-6 py-3 font-medium">Price</th>
+                <th className="px-6 py-3 font-medium">Features</th>
+                <th className="px-6 py-3 font-medium">Status</th>
+                <th className="px-6 py-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((p) => (
+                <tr key={p.id} className="border-t border-ink-800">
+                  <td className="px-6 py-3 font-medium">
+                    {p.name}
+                    {p.is_featured && <span className="ml-2 rounded-sm bg-gold/15 px-2 py-0.5 text-[10px] text-gold">FEATURED</span>}
+                    <div className="text-xs font-normal text-white/35">/{p.slug}</div>
+                  </td>
+                  <td className="px-6 py-3 text-white/60">
+                    ${(p.price_cents / 100).toFixed(0)}{p.interval === "month" ? "/mo" : " one-time"}
+                  </td>
+                  <td className="px-6 py-3 text-white/40">{p.features?.length || 0} listed</td>
+                  <td className="px-6 py-3">
+                    <span className={`rounded-sm border px-2 py-0.5 text-xs ${p.is_active ? "border-emerald-500/30 text-emerald-400" : "border-white/20 text-white/40"}`}>
+                      {p.is_active ? "Live" : "Hidden"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3">
+                    <div className="flex justify-end gap-3">
+                      <button onClick={() => setEditing(p)} className="text-white/50 hover:text-gold"><Pencil size={16} /></button>
+                      <button onClick={() => remove(p.id)} className="text-white/50 hover:text-danger"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -383,16 +583,16 @@ function StatsEditor({ stats = [], onChange }) {
   );
 }
 
-function TagsEditor({ tags = [], onChange }) {
+function TagsEditor({ tags = [], onChange, label = "Tags / pills", allowDuplicates = false }) {
   const [draft, setDraft] = useState("");
   const addTag = () => {
     const v = draft.trim();
-    if (v && !tags.includes(v)) onChange([...tags, v]);
+    if (v && (allowDuplicates || !tags.includes(v))) onChange([...tags, v]);
     setDraft("");
   };
   return (
     <div>
-      <label className="field-label">Tags / pills</label>
+      <label className="field-label">{label}</label>
       <div className="flex flex-wrap gap-2">
         {tags.map((t) => (
           <span key={t} className="flex items-center gap-1.5 rounded-full border border-ink-700 px-3 py-1 text-xs text-white/70">
