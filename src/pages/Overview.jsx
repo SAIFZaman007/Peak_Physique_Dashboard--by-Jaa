@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
-import { Users, UserCheck, CalendarClock, DollarSign, ArrowRight } from "lucide-react";
+import { Users, UserCheck, CalendarClock, Clock, DollarSign, ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
 import { formatCurrency, formatDateTime, STATUS_STYLES } from "../lib/utils";
 
@@ -29,8 +29,8 @@ export default function Overview() {
 
   if (loading || !stats) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-28 animate-pulse bg-ink-900" />)}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="card h-28 animate-pulse bg-ink-900" />)}
       </div>
     );
   }
@@ -39,6 +39,10 @@ export default function Overview() {
     { icon: Users, label: "Total Clients", value: stats.total_clients },
     { icon: UserCheck, label: "Active Clients", value: stats.active_clients },
     { icon: CalendarClock, label: "Upcoming Sessions", value: stats.upcoming_bookings },
+    // Includes sessions bought online that are still waiting on a time
+    // slot (see Booking.start_time) as well as any awaiting confirmation
+    // — same "pending" bucket the Bookings page filters on.
+    { icon: Clock, label: "Pending Bookings", value: stats.pending_bookings },
     { icon: DollarSign, label: "Revenue", value: formatCurrency(stats.revenue_cents) },
   ];
 
@@ -64,7 +68,7 @@ export default function Overview() {
         <p className="text-sm text-white/40">A live snapshot of your coaching business.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {kpis.map((k) => (
           <div key={k.label} className="card">
             <div className="flex items-center gap-3 text-gold">
