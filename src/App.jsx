@@ -8,6 +8,7 @@ import ClientDetail from "./pages/ClientDetail.jsx";
 import Bookings from "./pages/Bookings.jsx";
 import Payments from "./pages/Payments.jsx";
 import Content from "./pages/Content.jsx";
+import Messages from "./pages/Messages.jsx";
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="bookings" element={<Bookings />} />
         <Route path="payments" element={<Payments />} />
         <Route path="content" element={<Content />} />
+        <Route path="messages" element={<Messages />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

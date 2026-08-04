@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
-import { ArrowLeft, Mail, Target, Scale, CalendarDays, Activity } from "lucide-react";
+import { ArrowLeft, Mail, Target, Scale, CalendarDays, Activity, MessageSquare } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/utils";
 
@@ -58,11 +58,19 @@ export default function ClientDetail() {
               </div>
             </div>
           </div>
-          <span className={`rounded-sm border px-3 py-1 text-xs ${
-            u.is_active ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400" : "border-white/20 bg-white/10 text-white/50"
-          }`}>
-            {u.is_active ? "Active" : "Inactive"}
-          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              to={`/messages?client=${u.id}`}
+              className="btn-outline !px-4 !py-2 !text-xs"
+            >
+              <MessageSquare size={14} /> Message
+            </Link>
+            <span className={`rounded-sm border px-3 py-1 text-xs ${
+              u.is_active ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400" : "border-white/20 bg-white/10 text-white/50"
+            }`}>
+              {u.is_active ? "Active" : "Inactive"}
+            </span>
+          </div>
         </div>
       </div>
 
