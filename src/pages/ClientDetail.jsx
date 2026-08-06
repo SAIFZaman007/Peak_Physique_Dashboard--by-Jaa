@@ -3,16 +3,25 @@ import { Link, useParams } from "react-router-dom";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
-import { ArrowLeft, Mail, Target, Scale, CalendarDays, Activity, MessageSquare } from "lucide-react";
-import { api } from "../lib/api";
+import { ArrowLeft, Mail, Target, Scale, CalendarDays, Activity, MessageSquare, UserCog } from "lucide-react";
+import { api, apiError } from "../lib/api";
 import { formatDate } from "../lib/utils";
+import { useAuth } from "../context/AuthContext.jsx";
+
+const UNASSIGNED = "unassigned";
 
 export default function ClientDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [detail, setDetail] = useState(null);
   const [progress, setProgress] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [trainers, setTrainers] = useState([]);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignError, setAssignError] = useState("");
 
   useEffect(() => {
     Promise.all([api.get(`/admin/clients/${id}`), api.get(`/progress/user/${id}`)])
@@ -23,6 +32,27 @@ export default function ClientDetail() {
       .catch(() => setError("Could not load this client."))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get("/role-matrix/staff").then(({ data }) => {
+      setTrainers(data.filter((s) => s.role === "trainer"));
+    }).catch(() => {});
+  }, [isAdmin]);
+
+  const assignTrainer = async (value) => {
+    setAssignError("");
+    setAssignBusy(true);
+    try {
+      const assigned_trainer_id = value === UNASSIGNED ? null : Number(value);
+      const { data } = await api.patch(`/admin/users/${id}`, { assigned_trainer_id });
+      setDetail((d) => ({ ...d, user: data }));
+    } catch (err) {
+      setAssignError(apiError(err, "Could not update the assigned trainer."));
+    } finally {
+      setAssignBusy(false);
+    }
+  };
 
   if (loading) return <div className="card text-sm text-white/40">Loading…</div>;
   if (error || !detail) return <div className="card text-sm text-danger">{error || "Not found."}</div>;
@@ -59,6 +89,24 @@ export default function ClientDetail() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <UserCog size={14} className="text-gold" />
+                <select
+                  value={u.assigned_trainer_id ?? UNASSIGNED}
+                  onChange={(e) => assignTrainer(e.target.value)}
+                  disabled={assignBusy}
+                  className={`rounded-sm border bg-ink-950 px-2 py-1.5 text-xs outline-none focus:border-gold disabled:opacity-40 ${
+                    u.assigned_trainer_id ? "border-ink-700" : "border-gold/30 text-gold"
+                  }`}
+                >
+                  <option value={UNASSIGNED}>Unassigned</option>
+                  {trainers.map((t) => (
+                    <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <Link
               to={`/messages?client=${u.id}`}
               className="btn-outline !px-4 !py-2 !text-xs"
@@ -72,6 +120,7 @@ export default function ClientDetail() {
             </span>
           </div>
         </div>
+        {assignError && <p className="mt-3 text-sm text-danger">{assignError}</p>}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

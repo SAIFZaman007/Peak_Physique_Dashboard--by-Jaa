@@ -398,7 +398,7 @@ export default function RoleMatrix() {
       <AccessMatrix rules={rules} loading={loading} onChanged={load} />
 
       <p className="flex items-center gap-2 text-xs text-white/30">
-        <LayoutGrid size={12} /> Access changes apply immediately — no redeploy needed.
+        <LayoutGrid size={12} /> Developed by <a href="https://maktechgroup.com/" target="_blank" rel="noopener noreferrer" className="text-gold hover:underline">Maktech Groups.</a>
       </p>
     </div>
   );
