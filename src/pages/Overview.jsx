@@ -14,15 +14,18 @@ export default function Overview() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       api.get("/admin/stats"),
       api.get("/bookings"),
       api.get("/admin/payments"),
     ])
       .then(([s, b, p]) => {
-        setStats(s.data);
-        setBookings(b.data);
-        setPayments(p.data);
+        if (s.status === "fulfilled") setStats(s.value.data);
+        if (b.status === "fulfilled") setBookings(b.value.data);
+        // Payments defaults to Admin-only in the Role Matrix — a trainer
+        // without it simply sees an empty revenue chart below instead of
+        // the whole Overview page failing to load.
+        if (p.status === "fulfilled") setPayments(p.value.data);
       })
       .finally(() => setLoading(false));
   }, []);

@@ -1,20 +1,24 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, CalendarDays, CreditCard, FileText, MessageSquare, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, CalendarDays, CreditCard, FileText, MessageSquare, ShieldCheck, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../lib/api";
 
+// `module` maps each nav item to the Role Matrix key that gates it (see
+// backend app/core/rbac.py) — omitted for items every staff member always
+// sees (Messages is a shared client/trainer channel, not a toggleable
+// module; Role Matrix itself is filtered separately, by role, below).
 const NAV = [
-  { to: "/", end: true, icon: LayoutDashboard, label: "Overview" },
-  { to: "/clients", icon: Users, label: "Clients" },
-  { to: "/bookings", icon: CalendarDays, label: "Bookings" },
-  { to: "/payments", icon: CreditCard, label: "Payments" },
+  { to: "/", end: true, icon: LayoutDashboard, label: "Overview", module: "overview" },
+  { to: "/clients", icon: Users, label: "Clients", module: "clients" },
+  { to: "/bookings", icon: CalendarDays, label: "Bookings", module: "bookings" },
+  { to: "/payments", icon: CreditCard, label: "Payments", module: "payments" },
   { to: "/messages", icon: MessageSquare, label: "Messages" },
-  { to: "/content", icon: FileText, label: "Site Content" },
+  { to: "/content", icon: FileText, label: "Site Content", module: "content" },
 ];
 
 export default function Sidebar({ onNavigate }) {
-  const { logout } = useAuth();
+  const { user, logout, can } = useAuth();
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
@@ -23,6 +27,8 @@ export default function Sidebar({ onNavigate }) {
     const timer = setInterval(load, 8000);
     return () => clearInterval(timer);
   }, []);
+
+  const items = NAV.filter((n) => !n.module || can(n.module));
 
   return (
     <div className="flex h-full flex-col p-6">
@@ -33,7 +39,7 @@ export default function Sidebar({ onNavigate }) {
         Coach Console
       </div>
       <nav className="mt-10 flex-1 space-y-1">
-        {NAV.map((n) => (
+        {items.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
@@ -54,6 +60,20 @@ export default function Sidebar({ onNavigate }) {
             )}
           </NavLink>
         ))}
+        {user?.role === "admin" && (
+          <NavLink
+            to="/role-matrix"
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-sm px-4 py-3 text-sm font-medium transition-colors ${
+                isActive ? "bg-gold text-ink-950" : "text-white/60 hover:bg-ink-800 hover:text-white"
+              }`
+            }
+          >
+            <ShieldCheck size={18} />
+            Role Matrix
+          </NavLink>
+        )}
       </nav>
       <button
         onClick={logout}

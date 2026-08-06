@@ -34,4 +34,8 @@ export const STATUS_STYLES = {
   succeeded: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   failed: "bg-danger/15 text-danger border-danger/30",
   refunded: "bg-white/10 text-white/60 border-white/20",
+  // Staff invitation statuses (Role Matrix) — "pending" and "cancelled"
+  // above are already reused as-is since they match semantically.
+  accepted: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  expired: "bg-white/10 text-white/40 border-white/20",
 };
