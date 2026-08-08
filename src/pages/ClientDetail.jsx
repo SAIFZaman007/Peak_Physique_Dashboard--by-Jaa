@@ -3,9 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
-import { ArrowLeft, Mail, Target, Scale, CalendarDays, Activity, MessageSquare, UserCog } from "lucide-react";
+import {
+  ArrowLeft, Mail, Target, Scale, CalendarDays, Activity, MessageSquare, UserCog,
+  NotebookPen, Apple, Dumbbell, Plus, Pencil, Trash2,
+} from "lucide-react";
 import { api, apiError } from "../lib/api";
-import { formatDate } from "../lib/utils";
+import { formatDate, formatDateTime } from "../lib/utils";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const UNASSIGNED = "unassigned";
@@ -190,6 +193,483 @@ export default function ClientDetail() {
           </div>
         )}
       </div>
+
+      <CoachingWorkspace clientId={u.id} />
+    </div>
+  );
+}
+
+// ── Coaching Workspace — Notes / Nutrition / Workouts ────────────────────
+//
+// Replaced the revenue widget on the Trainer dashboard home page (see
+// Overview.jsx) — this is where that work actually happens, one client at
+// a time. Each tab is its own small CRUD panel talking to
+// app/api/routes/coaching.py; visibility of a tab follows the same Role
+// Matrix module a Trainer's sidebar/dashboard already respects (see
+// AuthContext.can), and each entry's Edit/Delete controls only appear for
+// its original author or an Admin — mirroring the backend's own rule so
+// nobody sees a control that would just 403.
+
+const WORKSPACE_TABS = [
+  { key: "notes", label: "Notes", module: "notes" },
+  { key: "nutrition", label: "Nutrition", module: "nutrition" },
+  { key: "workouts", label: "Workouts", module: "workouts" },
+];
+
+function CoachingWorkspace({ clientId }) {
+  const { can } = useAuth();
+  const visibleTabs = WORKSPACE_TABS.filter((t) => can(t.module));
+  const [tab, setTab] = useState(visibleTabs[0]?.key || null);
+
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.key === tab)) {
+      setTab(visibleTabs[0]?.key || null);
+    }
+    // Re-check only when the client changes or the visible tab set itself
+    // changes shape — not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, visibleTabs.map((t) => t.key).join(",")]);
+
+  if (visibleTabs.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-white/50">Coaching Workspace</h3>
+      <div className="flex gap-2 border-b border-ink-800">
+        {visibleTabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.key ? "border-gold text-gold" : "border-transparent text-white/50 hover:text-white"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "notes" && <NotesPanel clientId={clientId} />}
+      {tab === "nutrition" && <NutritionPanel clientId={clientId} />}
+      {tab === "workouts" && <WorkoutsPanel clientId={clientId} />}
+    </div>
+  );
+}
+
+// A staff member may edit/delete only what they authored — Admins can
+// touch anything. Mirrors _ensure_author_or_admin on the backend so the
+// UI never offers a control that would just come back 403.
+function canEditRecord(record, user) {
+  return user?.role === "admin" || record.trainer_id === user?.id;
+}
+
+// ── Notes ─────────────────────────────────────────────────────────────
+
+const EMPTY_NOTE = { content: "" };
+
+function NotesPanel({ clientId }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null = closed, {} = new, {...} = edit
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = () =>
+    api.get(`/notes/client/${clientId}`).then(({ data }) => setItems(data)).finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, [clientId]);
+
+  const save = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      if (editing.id) {
+        await api.patch(`/notes/${editing.id}`, { content: editing.content });
+      } else {
+        await api.post("/notes", { client_id: clientId, content: editing.content });
+      }
+      setEditing(null);
+      load();
+    } catch (e) {
+      setError(apiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Delete this note? This can't be undone.")) return;
+    await api.delete(`/notes/${id}`);
+    load();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => setEditing({ ...EMPTY_NOTE })} className="btn-primary !px-5 !py-2.5 !text-xs">
+          <Plus size={16} /> Add Note
+        </button>
+      </div>
+
+      {editing && (
+        <div className="card space-y-4">
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <div>
+            <label className="field-label">Note</label>
+            <textarea
+              className="field-input min-h-[110px]"
+              placeholder="What did you cover with this client, what should you follow up on…"
+              value={editing.content}
+              onChange={(e) => setEditing({ ...editing, content: e.target.value })}
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={save}
+              disabled={saving || !editing.content.trim()}
+              className="btn-primary !px-6 !py-2.5 !text-xs disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => setEditing(null)} className="btn-outline !px-6 !py-2.5 !text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-white/40">Loading…</p>
+      ) : items.length === 0 ? (
+        <div className="card flex flex-col items-center py-12 text-center">
+          <NotebookPen size={32} className="text-gold" />
+          <p className="mt-3 text-sm text-white/50">No notes yet — add the first one above.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((n) => (
+            <div key={n.id} className="card">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/40">{n.trainer_name}</p>
+                  <p className="mt-0.5 text-[11px] text-white/30">{formatDateTime(n.created_at)}</p>
+                </div>
+                {canEditRecord(n, user) && (
+                  <div className="flex gap-3">
+                    <button onClick={() => setEditing({ id: n.id, content: n.content })} className="text-white/50 hover:text-gold">
+                      <Pencil size={15} />
+                    </button>
+                    <button onClick={() => remove(n.id)} className="text-white/50 hover:text-danger">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="mt-3 whitespace-pre-wrap text-sm text-white/80">{n.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Nutrition plans ───────────────────────────────────────────────────
+
+const EMPTY_NUTRITION = {
+  title: "Nutrition Plan", content: "",
+  calories_target: "", protein_target_g: "", carbs_target_g: "", fat_target_g: "",
+};
+
+function toIntOrNull(v) {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function NutritionPanel({ clientId }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = () =>
+    api.get(`/nutrition-plans/client/${clientId}`).then(({ data }) => setItems(data)).finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, [clientId]);
+
+  const save = async () => {
+    setError("");
+    setSaving(true);
+    const payload = {
+      title: editing.title || "Nutrition Plan",
+      content: editing.content,
+      calories_target: toIntOrNull(editing.calories_target),
+      protein_target_g: toIntOrNull(editing.protein_target_g),
+      carbs_target_g: toIntOrNull(editing.carbs_target_g),
+      fat_target_g: toIntOrNull(editing.fat_target_g),
+    };
+    try {
+      if (editing.id) {
+        await api.patch(`/nutrition-plans/${editing.id}`, payload);
+      } else {
+        await api.post("/nutrition-plans", { client_id: clientId, ...payload });
+      }
+      setEditing(null);
+      load();
+    } catch (e) {
+      setError(apiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Delete this nutrition plan? This can't be undone.")) return;
+    await api.delete(`/nutrition-plans/${id}`);
+    load();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => setEditing({ ...EMPTY_NUTRITION })} className="btn-primary !px-5 !py-2.5 !text-xs">
+          <Plus size={16} /> Add Nutrition Plan
+        </button>
+      </div>
+
+      {editing && (
+        <div className="card space-y-4">
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <div>
+            <label className="field-label">Title</label>
+            <input
+              className="field-input"
+              value={editing.title}
+              onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <label className="field-label">Calories</label>
+              <input type="number" min={0} className="field-input" value={editing.calories_target}
+                onChange={(e) => setEditing({ ...editing, calories_target: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Protein (g)</label>
+              <input type="number" min={0} className="field-input" value={editing.protein_target_g}
+                onChange={(e) => setEditing({ ...editing, protein_target_g: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Carbs (g)</label>
+              <input type="number" min={0} className="field-input" value={editing.carbs_target_g}
+                onChange={(e) => setEditing({ ...editing, carbs_target_g: e.target.value })} />
+            </div>
+            <div>
+              <label className="field-label">Fat (g)</label>
+              <input type="number" min={0} className="field-input" value={editing.fat_target_g}
+                onChange={(e) => setEditing({ ...editing, fat_target_g: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Plan details</label>
+            <textarea
+              className="field-input min-h-[140px]"
+              placeholder="Meals, timing, substitutions, notes for the client…"
+              value={editing.content}
+              onChange={(e) => setEditing({ ...editing, content: e.target.value })}
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={save}
+              disabled={saving || !editing.content.trim()}
+              className="btn-primary !px-6 !py-2.5 !text-xs disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => setEditing(null)} className="btn-outline !px-6 !py-2.5 !text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-white/40">Loading…</p>
+      ) : items.length === 0 ? (
+        <div className="card flex flex-col items-center py-12 text-center">
+          <Apple size={32} className="text-gold" />
+          <p className="mt-3 text-sm text-white/50">No nutrition plans yet — add the first one above.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((n) => (
+            <div key={n.id} className="card">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-white">{n.title}</p>
+                  <p className="mt-0.5 text-[11px] text-white/30">{n.trainer_name} · {formatDateTime(n.created_at)}</p>
+                </div>
+                {canEditRecord(n, user) && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setEditing({
+                        id: n.id, title: n.title, content: n.content,
+                        calories_target: n.calories_target ?? "", protein_target_g: n.protein_target_g ?? "",
+                        carbs_target_g: n.carbs_target_g ?? "", fat_target_g: n.fat_target_g ?? "",
+                      })}
+                      className="text-white/50 hover:text-gold"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button onClick={() => remove(n.id)} className="text-white/50 hover:text-danger">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {(n.calories_target != null || n.protein_target_g != null || n.carbs_target_g != null || n.fat_target_g != null) && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {n.calories_target != null && (
+                    <span className="rounded-sm border border-gold/30 bg-gold/10 px-2 py-0.5 text-[11px] text-gold">{n.calories_target} kcal</span>
+                  )}
+                  {n.protein_target_g != null && (
+                    <span className="rounded-sm border border-ink-700 px-2 py-0.5 text-[11px] text-white/60">P {n.protein_target_g}g</span>
+                  )}
+                  {n.carbs_target_g != null && (
+                    <span className="rounded-sm border border-ink-700 px-2 py-0.5 text-[11px] text-white/60">C {n.carbs_target_g}g</span>
+                  )}
+                  {n.fat_target_g != null && (
+                    <span className="rounded-sm border border-ink-700 px-2 py-0.5 text-[11px] text-white/60">F {n.fat_target_g}g</span>
+                  )}
+                </div>
+              )}
+              <p className="mt-3 whitespace-pre-wrap text-sm text-white/80">{n.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Workout plans ─────────────────────────────────────────────────────
+
+const EMPTY_WORKOUT = { title: "Workout Plan", content: "" };
+
+function WorkoutsPanel({ clientId }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = () =>
+    api.get(`/workout-plans/client/${clientId}`).then(({ data }) => setItems(data)).finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, [clientId]);
+
+  const save = async () => {
+    setError("");
+    setSaving(true);
+    const payload = { title: editing.title || "Workout Plan", content: editing.content };
+    try {
+      if (editing.id) {
+        await api.patch(`/workout-plans/${editing.id}`, payload);
+      } else {
+        await api.post("/workout-plans", { client_id: clientId, ...payload });
+      }
+      setEditing(null);
+      load();
+    } catch (e) {
+      setError(apiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Delete this workout plan? This can't be undone.")) return;
+    await api.delete(`/workout-plans/${id}`);
+    load();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => setEditing({ ...EMPTY_WORKOUT })} className="btn-primary !px-5 !py-2.5 !text-xs">
+          <Plus size={16} /> Add Workout Plan
+        </button>
+      </div>
+
+      {editing && (
+        <div className="card space-y-4">
+          {error && <p className="text-sm text-danger">{error}</p>}
+          <div>
+            <label className="field-label">Title</label>
+            <input
+              className="field-input"
+              value={editing.title}
+              onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="field-label">Program</label>
+            <textarea
+              className="field-input min-h-[140px]"
+              placeholder="Exercises, sets/reps, weekly split, progression notes…"
+              value={editing.content}
+              onChange={(e) => setEditing({ ...editing, content: e.target.value })}
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={save}
+              disabled={saving || !editing.content.trim()}
+              className="btn-primary !px-6 !py-2.5 !text-xs disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => setEditing(null)} className="btn-outline !px-6 !py-2.5 !text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-white/40">Loading…</p>
+      ) : items.length === 0 ? (
+        <div className="card flex flex-col items-center py-12 text-center">
+          <Dumbbell size={32} className="text-gold" />
+          <p className="mt-3 text-sm text-white/50">No workout plans yet — add the first one above.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((n) => (
+            <div key={n.id} className="card">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-white">{n.title}</p>
+                  <p className="mt-0.5 text-[11px] text-white/30">{n.trainer_name} · {formatDateTime(n.created_at)}</p>
+                </div>
+                {canEditRecord(n, user) && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setEditing({ id: n.id, title: n.title, content: n.content })}
+                      className="text-white/50 hover:text-gold"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button onClick={() => remove(n.id)} className="text-white/50 hover:text-danger">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="mt-3 whitespace-pre-wrap text-sm text-white/80">{n.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

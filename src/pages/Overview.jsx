@@ -3,11 +3,17 @@ import { Link } from "react-router-dom";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
-import { Users, UserCheck, CalendarClock, Clock, DollarSign, ArrowRight } from "lucide-react";
+import {
+  Users, UserCheck, CalendarClock, Clock, DollarSign, ArrowRight,
+  NotebookPen, Apple, Dumbbell,
+} from "lucide-react";
 import { api } from "../lib/api";
 import { formatCurrency, formatDateTime, STATUS_STYLES } from "../lib/utils";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Overview() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [stats, setStats] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -24,7 +30,10 @@ export default function Overview() {
         if (b.status === "fulfilled") setBookings(b.value.data);
         // Payments defaults to Admin-only in the Role Matrix — a trainer
         // without it simply sees an empty revenue chart below instead of
-        // the whole Overview page failing to load.
+        // the whole Overview page failing to load. Moot for the KPI/chart
+        // themselves now (Trainers never see revenue at all — see
+        // dashboard_stats in admin.py), but /admin/payments still backs
+        // other Admin-only views, so it stays fetched here defensively.
         if (p.status === "fulfilled") setPayments(p.value.data);
       })
       .finally(() => setLoading(false));
@@ -46,10 +55,14 @@ export default function Overview() {
     // slot (see Booking.start_time) as well as any awaiting confirmation
     // — same "pending" bucket the Bookings page filters on.
     { icon: Clock, label: "Pending Bookings", value: stats.pending_bookings },
-    { icon: DollarSign, label: "Revenue", value: formatCurrency(stats.revenue_cents) },
+    // Revenue is Admin-only, full stop — the backend never even sends
+    // revenue_cents to a Trainer (see dashboard_stats in admin.py), so
+    // this tile simply doesn't exist for them rather than being hidden
+    // client-side after the fact.
+    ...(isAdmin ? [{ icon: DollarSign, label: "Revenue", value: formatCurrency(stats.revenue_cents) }] : []),
   ];
 
-  // Revenue grouped by month from succeeded payments
+  // Revenue grouped by month from succeeded payments (Admin view only).
   const revByMonth = {};
   payments
     .filter((p) => p.status === "succeeded")
@@ -58,6 +71,15 @@ export default function Overview() {
       revByMonth[key] = (revByMonth[key] || 0) + p.amount_cents;
     });
   const chartData = Object.entries(revByMonth).map(([month, cents]) => ({ month, revenue: cents / 100 }));
+
+  // Trainer's coaching workspace snapshot — what took the place of the
+  // revenue chart below. Counts are scoped to the Trainer's own assigned
+  // clients server-side (see dashboard_stats), never company-wide.
+  const workspaceTiles = [
+    { icon: NotebookPen, label: "Client Notes", value: stats.notes_count ?? 0 },
+    { icon: Apple, label: "Nutrition Plans", value: stats.nutrition_plans_count ?? 0 },
+    { icon: Dumbbell, label: "Workout Plans", value: stats.workout_plans_count ?? 0 },
+  ];
 
   const upcoming = bookings
     .filter((b) => b.status !== "cancelled" && new Date(b.start_time) >= new Date())
@@ -71,7 +93,7 @@ export default function Overview() {
         <p className="text-sm text-white/40">A live snapshot of your coaching business.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className={`grid gap-4 sm:grid-cols-2 ${isAdmin ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
         {kpis.map((k) => (
           <div key={k.label} className="card">
             <div className="flex items-center gap-3 text-gold">
@@ -84,29 +106,56 @@ export default function Overview() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="card lg:col-span-3">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white/50">Revenue</h3>
-          {chartData.length ? (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                  <XAxis dataKey="month" stroke="#888" fontSize={12} />
-                  <YAxis stroke="#888" fontSize={12} />
-                  <Tooltip
-                    cursor={{ fill: "rgba(245,166,35,0.08)" }}
-                    contentStyle={{ background: "#111", border: "1px solid #222", borderRadius: 4 }}
-                    labelStyle={{ color: "#F5A623" }}
-                    formatter={(v) => [`$${v}`, "Revenue"]}
-                  />
-                  <Bar dataKey="revenue" fill="#F5A623" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+        {isAdmin ? (
+          <div className="card lg:col-span-3">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white/50">Revenue</h3>
+            {chartData.length ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                    <XAxis dataKey="month" stroke="#888" fontSize={12} />
+                    <YAxis stroke="#888" fontSize={12} />
+                    <Tooltip
+                      cursor={{ fill: "rgba(245,166,35,0.08)" }}
+                      contentStyle={{ background: "#111", border: "1px solid #222", borderRadius: 4 }}
+                      labelStyle={{ color: "#F5A623" }}
+                      formatter={(v) => [`$${v}`, "Revenue"]}
+                    />
+                    <Bar dataKey="revenue" fill="#F5A623" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="py-16 text-center text-sm text-white/40">No revenue recorded yet.</p>
+            )}
+          </div>
+        ) : (
+          <div className="card lg:col-span-3">
+            <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-white/50">Your Coaching Workspace</h3>
+            <p className="mb-4 text-sm text-white/40">
+              Notes, nutrition guidance and workout programs for your clients — open a client profile to add or edit.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {workspaceTiles.map((t) => (
+                <Link
+                  key={t.label}
+                  to="/clients"
+                  className="group rounded-sm border border-ink-800 p-4 transition-colors hover:border-gold/50"
+                >
+                  <div className="flex items-center gap-2 text-gold">
+                    <t.icon size={18} />
+                    <span className="text-xs uppercase tracking-wider text-white/40">{t.label}</span>
+                  </div>
+                  <div className="mt-3 font-display text-3xl tracking-[1px] text-white">{t.value}</div>
+                  <div className="mt-2 flex items-center gap-1 text-xs text-white/40 group-hover:text-gold">
+                    Open a client <ArrowRight size={12} />
+                  </div>
+                </Link>
+              ))}
             </div>
-          ) : (
-            <p className="py-16 text-center text-sm text-white/40">No revenue recorded yet.</p>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="card lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
