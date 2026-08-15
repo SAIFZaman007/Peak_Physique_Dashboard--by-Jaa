@@ -88,9 +88,21 @@ export default function Overview() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="font-display text-3xl tracking-[1px]">Dashboard</h2>
-        <p className="text-sm text-white/40">A live snapshot of your coaching business.</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="font-display text-3xl tracking-[1px]">Dashboard</h2>
+          <p className="text-sm text-white/40">A live snapshot of your coaching business.</p>
+        </div>
+        {isAdmin && stats?.pending_approvals > 0 && (
+          <Link
+            to="/clients"
+            className="flex items-center gap-2 rounded-sm border border-amber-500/40 bg-amber-500/15 px-3.5 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 transition-colors"
+          >
+            <Clock size={14} />
+            {stats.pending_approvals} Registration{stats.pending_approvals > 1 ? "s" : ""} Pending Approval
+            <ArrowRight size={13} />
+          </Link>
+        )}
       </div>
 
       <div className={`grid gap-4 sm:grid-cols-2 ${isAdmin ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>

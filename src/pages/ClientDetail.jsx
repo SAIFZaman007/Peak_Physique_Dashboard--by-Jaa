@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 import {
   ArrowLeft, Mail, Target, Scale, CalendarDays, Activity, MessageSquare, UserCog,
-  NotebookPen, Apple, Dumbbell, Plus, Pencil, Trash2,
+  NotebookPen, Apple, Dumbbell, Plus, Pencil, Trash2, CheckCircle, Clock,
+  AlertTriangle, Loader2,
 } from "lucide-react";
 import { api, apiError } from "../lib/api";
 import { formatDate, formatDateTime } from "../lib/utils";
@@ -15,6 +16,7 @@ const UNASSIGNED = "unassigned";
 
 export default function ClientDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [detail, setDetail] = useState(null);
@@ -26,7 +28,12 @@ export default function ClientDetail() {
   const [assignBusy, setAssignBusy] = useState(false);
   const [assignError, setAssignError] = useState("");
 
-  useEffect(() => {
+  const [approveBusy, setApproveBusy] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const loadData = () => {
     Promise.all([api.get(`/admin/clients/${id}`), api.get(`/progress/user/${id}`)])
       .then(([d, p]) => {
         setDetail(d.data);
@@ -34,6 +41,10 @@ export default function ClientDetail() {
       })
       .catch(() => setError("Could not load this client."))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadData();
   }, [id]);
 
   useEffect(() => {
@@ -54,6 +65,31 @@ export default function ClientDetail() {
       setAssignError(apiError(err, "Could not update the assigned trainer."));
     } finally {
       setAssignBusy(false);
+    }
+  };
+
+  const approveClient = async () => {
+    setAssignError("");
+    setApproveBusy(true);
+    try {
+      const { data } = await api.patch(`/admin/clients/${id}/approve`);
+      setDetail((d) => ({ ...d, user: data }));
+    } catch (err) {
+      setAssignError(apiError(err, "Could not approve this client account."));
+    } finally {
+      setApproveBusy(false);
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    setDeleteError("");
+    setDeleteBusy(true);
+    try {
+      await api.delete(`/admin/clients/${id}`);
+      navigate("/clients", { replace: true });
+    } catch (err) {
+      setDeleteError(apiError(err, "Could not delete client account."));
+      setDeleteBusy(false);
     }
   };
 
@@ -91,7 +127,7 @@ export default function ClientDetail() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {isAdmin && (
               <div className="flex items-center gap-2">
                 <UserCog size={14} className="text-gold" />
@@ -116,15 +152,92 @@ export default function ClientDetail() {
             >
               <MessageSquare size={14} /> Message
             </Link>
-            <span className={`rounded-sm border px-3 py-1 text-xs ${
-              u.is_active ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400" : "border-white/20 bg-white/10 text-white/50"
-            }`}>
-              {u.is_active ? "Active" : "Inactive"}
-            </span>
+
+            {u.is_approved === false ? (
+              <span className="inline-flex items-center gap-1 rounded-sm border border-amber-500/30 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-300">
+                <Clock size={12} /> Pending Approval
+              </span>
+            ) : (
+              <span className={`rounded-sm border px-3 py-1 text-xs ${
+                u.is_active ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400" : "border-white/20 bg-white/10 text-white/50"
+              }`}>
+                {u.is_active ? "Active" : "Inactive"}
+              </span>
+            )}
+
+            {isAdmin && u.is_approved === false && (
+              <button
+                onClick={approveClient}
+                disabled={approveBusy}
+                className="inline-flex items-center gap-1.5 rounded-sm bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
+              >
+                {approveBusy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                Approve Client
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setDeleteError("");
+                  setShowDeleteModal(true);
+                }}
+                className="p-2 text-white/40 hover:text-danger rounded border border-ink-800 hover:border-danger/40 transition-colors"
+                title="Delete this client"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         </div>
         {assignError && <p className="mt-3 text-sm text-danger">{assignError}</p>}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="card w-full max-w-md space-y-4 border border-danger/30 bg-ink-950 p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-danger">
+              <AlertTriangle size={24} />
+              <h3 className="font-display text-xl">Delete Client Account?</h3>
+            </div>
+            <p className="text-sm text-white/70">
+              Are you sure you want to permanently delete <strong className="text-white">{u.first_name} {u.last_name}</strong> ({u.email})?
+            </p>
+            <p className="text-xs text-white/40">
+              All personal logs, notes, plans, and portal access will be permanently deleted. This cannot be undone.
+            </p>
+            {deleteError && (
+              <div className="rounded-sm bg-danger/10 border border-danger/30 p-2.5 text-xs text-danger">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="btn-outline !px-5 !py-2 !text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteClient}
+                disabled={deleteBusy}
+                className="rounded-sm bg-danger px-5 py-2 text-xs font-semibold text-white hover:bg-danger/80 disabled:opacity-50 transition-colors"
+              >
+                {deleteBusy ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 size={14} className="animate-spin" /> Deleting…
+                  </span>
+                ) : (
+                  "Yes, Delete Account"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         {stat.map((s) => (
