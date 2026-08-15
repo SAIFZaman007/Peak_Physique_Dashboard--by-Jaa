@@ -3,10 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Peak Physique — trainer/admin dashboard (React + Vite + Tailwind)",
+  "description": "Peak Physique \u2014 trainer/admin dashboard (React + Vite + Tailwind)",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node init && vite",
+    "build": "node init && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
